@@ -35,6 +35,10 @@ let SHAREPOINT_CONFIG = {
   worksheetName: process.env.SHAREPOINT_WORKSHEET_NAME || 'Sheet1',
 };
 
+// Secret admin token for downloading data
+// Change this to a secure random string in production
+const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'vsb-admin-2024-secure-token';
+
 // Check if running in demo mode (no Azure credentials configured)
 const isDemoMode = SHAREPOINT_CONFIG.clientId === 'YOUR_CLIENT_ID';
 
@@ -327,9 +331,20 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
- * Download CSV endpoint
+ * Download CSV endpoint - PROTECTED (requires admin token)
+ * Access with: /api/download-csv?token=YOUR_SECRET_TOKEN
  */
 app.get('/api/download-csv', (req, res) => {
+  // Check for admin token
+  const token = req.query.token || req.headers['x-admin-token'];
+
+  if (token !== ADMIN_SECRET_TOKEN) {
+    return res.status(403).json({
+      success: false,
+      error: 'Unauthorized. Valid admin token required.'
+    });
+  }
+
   const csvFilePath = join(__dirname, 'employee_data.csv');
 
   // Check if file exists
@@ -353,9 +368,20 @@ app.get('/api/download-csv', (req, res) => {
 });
 
 /**
- * Get CSV data as JSON (for viewing in browser)
+ * Get CSV data as JSON (for viewing in browser) - PROTECTED
+ * Access with: /api/view-data?token=YOUR_SECRET_TOKEN
  */
 app.get('/api/view-data', (req, res) => {
+  // Check for admin token
+  const token = req.query.token || req.headers['x-admin-token'];
+
+  if (token !== ADMIN_SECRET_TOKEN) {
+    return res.status(403).json({
+      success: false,
+      error: 'Unauthorized. Valid admin token required.'
+    });
+  }
+
   const csvFilePath = join(__dirname, 'employee_data.csv');
 
   // Check if file exists

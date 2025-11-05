@@ -36,45 +36,6 @@ const EmployeeTaskForm = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState({ type: '', message: '' });
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  // Download CSV function
-  const handleDownloadCSV = async () => {
-    setIsDownloading(true);
-    try {
-      const response = await fetch(API_ENDPOINTS.downloadCSV);
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to download CSV');
-      }
-
-      // Create blob and download
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `employee_task_data_${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      setSubmitStatus({
-        type: 'success',
-        message: 'CSV file downloaded successfully!'
-      });
-      setTimeout(() => setSubmitStatus({ type: '', message: '' }), 3000);
-    } catch (error) {
-      setSubmitStatus({
-        type: 'error',
-        message: `Download failed: ${error.message}`
-      });
-      setTimeout(() => setSubmitStatus({ type: '', message: '' }), 5000);
-    } finally {
-      setIsDownloading(false);
-    }
-  };
 
   // Handle employee info change
   const handleEmployeeInfoChange = (e) => {
@@ -246,14 +207,6 @@ const EmployeeTaskForm = () => {
       <div className="form-header">
         <h1>Employee Task Activity Form</h1>
         <p>Fill employee info once, then add multiple task rows</p>
-        <button
-          type="button"
-          onClick={handleDownloadCSV}
-          className="download-csv-btn"
-          disabled={isDownloading}
-        >
-          {isDownloading ? '⏳ Downloading...' : '📥 Download All Data (CSV)'}
-        </button>
       </div>
 
       {submitStatus.message && (
