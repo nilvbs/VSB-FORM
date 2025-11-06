@@ -79,6 +79,7 @@ function saveToLocalCSV(formData) {
   const csvFilePath = join(__dirname, 'employee_data.csv');
 
   // Prepare CSV row
+  // Row data (removed: qualityMeasurement, kpisMetrics, softSkills, challengesFaced, trainingNeeded, suggestedImprovements)
   const rowData = [
     formData.department,
     formData.roleTitle,
@@ -90,15 +91,9 @@ function saveToLocalCSV(formData) {
     formData.frequency,
     formData.timeSpent,
     formData.expectedOutput,
-    formData.qualityMeasurement,
-    formData.kpisMetrics,
     formData.toolsUsed,
     formData.technicalSkills,
-    formData.softSkills,
     formData.dependencies,
-    formData.challengesFaced,
-    formData.trainingNeeded,
-    formData.suggestedImprovements,
   ];
 
   // Escape CSV fields
@@ -115,7 +110,7 @@ function saveToLocalCSV(formData) {
   if (existsSync(csvFilePath)) {
     csvContent = readFileSync(csvFilePath, 'utf-8');
   } else {
-    // Create header
+    // Create header (removed: Quality Measurement, KPIs/Metrics, Soft Skills, Challenges, Training, Improvements)
     const headers = [
       'Department',
       'Role Title',
@@ -127,15 +122,9 @@ function saveToLocalCSV(formData) {
       'Frequency',
       'Time Spent per Task',
       'Expected Output / Deliverable',
-      'How Quality is Measured',
-      'KPIs / Metrics',
       'Tools Used',
       'Technical Skills Used',
-      'Soft Skills Used',
       'Dependencies',
-      'Challenges Faced',
-      'Training Needed for This Task',
-      'Suggested Improvements / Automation',
     ].join(',');
     csvContent = headers + '\n';
   }
