@@ -15,7 +15,6 @@ const EmployeeTaskForm = () => {
     department: '',
     roleTitle: '',
     empId: '',
-    level: '',
     employeeName: '',
   });
 
@@ -53,7 +52,7 @@ const EmployeeTaskForm = () => {
   const goToStep2 = () => {
     // Validate all employee fields are filled
     if (!employeeInfo.department || !employeeInfo.roleTitle || !employeeInfo.empId ||
-        !employeeInfo.level || !employeeInfo.employeeName) {
+        !employeeInfo.employeeName) {
       setSubmitStatus({
         type: 'error',
         message: 'Please fill all Employee Information fields before proceeding.'
@@ -269,22 +268,6 @@ const EmployeeTaskForm = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="level">
-                  Level *
-                  <span className="tooltip-icon" title={tooltipMessage}>ℹ️</span>
-                </label>
-                <input
-                  type="text"
-                  id="level"
-                  name="level"
-                  value={employeeInfo.level}
-                  onChange={handleEmployeeInfoChange}
-                  required
-                  placeholder="Enter level or 'NA'"
-                />
-              </div>
-
-              <div className="form-group full-width">
                 <label htmlFor="employeeName">
                   Employee Name *
                   <span className="tooltip-icon" title={tooltipMessage}>ℹ️</span>
