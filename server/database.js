@@ -26,12 +26,26 @@ async function connectToDatabase() {
 
   try {
     console.log('🔄 Connecting to MongoDB Atlas...');
-    client = new MongoClient(MONGODB_URI);
+
+    // MongoDB connection options with TLS/SSL configuration
+    const options = {
+      tls: true,
+      tlsAllowInvalidCertificates: false,
+      tlsAllowInvalidHostnames: false,
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      family: 4, // Use IPv4, skip trying IPv6
+    };
+
+    client = new MongoClient(MONGODB_URI, options);
     await client.connect();
-    
+
+    // Verify connection
+    await client.db('admin').command({ ping: 1 });
+
     db = client.db('employee_tasks');
     isConnected = true;
-    
+
     console.log('✅ Connected to MongoDB Atlas successfully!');
     return db;
   } catch (error) {
