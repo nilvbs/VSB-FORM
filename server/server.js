@@ -4,6 +4,17 @@ import fetch from 'node-fetch';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+// Import database service
+import {
+  saveMultipleTasksToDatabase,
+  getAllTasksFromDatabase,
+  exportTasksAsCSV,
+  isDatabaseAvailable
+} from './database.js';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,17 +22,10 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = 3001;
 
-// CORS configuration - Allow requests from frontend
-app.use(cors({
-  origin: [
-    'http://localhost:5173',  // Local development
-    'https://vsb-form-dhk8.vercel.app',  // Production frontend
-    /https:\/\/.*\.vercel\.app$/  // All Vercel preview deployments
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// Admin token for protected endpoints
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'vsb-admin-2024-secure-token';
+
+app.use(cors());
 app.use(express.json());
 
 // Load environment variables (if .env file exists)
@@ -34,10 +38,6 @@ let SHAREPOINT_CONFIG = {
   filePath: process.env.SHAREPOINT_FILE_PATH || '/EmployeeTaskData.xlsx',
   worksheetName: process.env.SHAREPOINT_WORKSHEET_NAME || 'Sheet1',
 };
-
-// Secret admin token for downloading data
-// Change this to a secure random string in production
-const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'vsb-admin-2024-secure-token';
 
 // Check if running in demo mode (no Azure credentials configured)
 const isDemoMode = SHAREPOINT_CONFIG.clientId === 'YOUR_CLIENT_ID';
@@ -78,8 +78,7 @@ async function getAccessToken() {
 function saveToLocalCSV(formData) {
   const csvFilePath = join(__dirname, 'employee_data.csv');
 
-  // Prepare CSV row
-  // Row data (includes optional fields: qualityMeasurement, softSkills, challengesFaced, trainingNeeded, suggestedImprovements)
+  // Prepare CSV row (17 columns - Level removed)
   const rowData = [
     formData.department,
     formData.roleTitle,
@@ -114,25 +113,25 @@ function saveToLocalCSV(formData) {
   if (existsSync(csvFilePath)) {
     csvContent = readFileSync(csvFilePath, 'utf-8');
   } else {
-    // Create header (includes optional fields: Quality Measurement, Soft Skills, Challenges, Training, Improvements)
+    // Create header (17 columns - exact field names)
     const headers = [
-      'Department',
-      'Role Title',
-      'Emp ID',
-      'Employee Name',
-      'Task / Activity',
-      'Detailed Description of Task',
-      'Frequency',
-      'Time Spent per Task',
-      'Expected Output / Deliverable',
-      'How Quality is Measured',
-      'Tools Used',
-      'Technical Skills Used',
-      'Soft Skills Used',
-      'Dependencies',
-      'Challenges Faced',
-      'Training Needed for This Task',
-      'Suggested Improvements / Automation',
+      'department',
+      'roleTitle',
+      'empId',
+      'employeeName',
+      'taskActivity',
+      'detailedDescription',
+      'frequency',
+      'timeSpent',
+      'expectedOutput',
+      'qualityMeasurement',
+      'toolsUsed',
+      'technicalSkills',
+      'softSkills',
+      'dependencies',
+      'challengesFaced',
+      'trainingNeeded',
+      'suggestedImprovements',
     ].join(',');
     csvContent = headers + '\n';
   }
@@ -193,49 +192,81 @@ app.post('/api/saveToSharePoint', async (req, res) => {
     const dataRows = rows || [req.body];
     console.log('Processed dataRows:', dataRows.length, 'rows');
 
-    // If in demo mode, save to local CSV
-    if (isDemoMode) {
-      console.log(`Running in DEMO MODE - saving ${dataRows.length} row(s) to local CSV file`);
-      console.log('Data received:', JSON.stringify(dataRows, null, 2));
+    // STRATEGY: Save to MongoDB first (persistent), then CSV as backup
+    let dbResult = null;
+    let csvSaved = false;
 
-      // Save all rows
+    // Try to save to MongoDB (persistent storage)
+    try {
+      console.log('💾 Attempting to save to MongoDB...');
+      dbResult = await saveMultipleTasksToDatabase(dataRows);
+
+      if (dbResult.success) {
+        console.log(`✅ Successfully saved ${dbResult.count} rows to MongoDB (PERSISTENT)`);
+      } else {
+        console.log('⚠️  MongoDB save failed:', dbResult.error);
+      }
+    } catch (dbError) {
+      console.log('⚠️  MongoDB error:', dbError.message);
+    }
+
+    // Also save to CSV as backup (will be lost on restart, but good for immediate download)
+    try {
+      console.log('📄 Saving to CSV as backup...');
       for (const formData of dataRows) {
-        console.log('Saving row:', formData);
         saveToLocalCSV(formData);
+      }
+      csvSaved = true;
+      console.log('✅ CSV backup saved');
+    } catch (csvError) {
+      console.log('⚠️  CSV backup failed:', csvError.message);
+    }
+
+    // If in demo mode (no SharePoint), return after saving to DB and CSV
+    if (isDemoMode) {
+      const savedTo = [];
+      if (dbResult && dbResult.success) savedTo.push('MongoDB (persistent)');
+      if (csvSaved) savedTo.push('CSV (backup)');
+
+      if (savedTo.length === 0) {
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to save data to any storage'
+        });
       }
 
       return res.json({
         success: true,
         mode: 'demo',
-        message: `${dataRows.length} row(s) saved to local CSV file (Demo Mode)`,
-        rowCount: dataRows.length
+        message: `✅ ${dataRows.length} row(s) saved to: ${savedTo.join(' + ')}`,
+        rowCount: dataRows.length,
+        storage: savedTo,
+        persistent: dbResult && dbResult.success
       });
     }
 
     // Get access token
     const accessToken = await getAccessToken();
 
-    // Prepare all rows data
+    // Prepare all rows data (17 columns - Level removed)
     const allRowsData = dataRows.map(formData => [
       formData.department,
       formData.roleTitle,
       formData.empId,
-      formData.level,
       formData.employeeName,
       formData.taskActivity,
       formData.detailedDescription,
       formData.frequency,
       formData.timeSpent,
       formData.expectedOutput,
-      formData.qualityMeasurement,
-      formData.kpisMetrics,
+      formData.qualityMeasurement || '',
       formData.toolsUsed,
       formData.technicalSkills,
-      formData.softSkills,
+      formData.softSkills || '',
       formData.dependencies,
-      formData.challengesFaced,
-      formData.trainingNeeded,
-      formData.suggestedImprovements,
+      formData.challengesFaced || '',
+      formData.trainingNeeded || '',
+      formData.suggestedImprovements || '',
     ]);
 
     // Add rows to Excel file
@@ -328,69 +359,117 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
- * Download CSV endpoint - PROTECTED (requires admin token)
- * Access with: /api/download-csv?token=YOUR_SECRET_TOKEN
+ * Download CSV endpoint - Fetches from MongoDB (persistent) or CSV (backup)
+ * Requires admin token authentication
  */
-app.get('/api/download-csv', (req, res) => {
-  // Check for admin token
-  const token = req.query.token || req.headers['x-admin-token'];
-
-  if (token !== ADMIN_SECRET_TOKEN) {
-    return res.status(403).json({
-      success: false,
-      error: 'Unauthorized. Valid admin token required.'
-    });
-  }
-
-  const csvFilePath = join(__dirname, 'employee_data.csv');
-
-  // Check if file exists
-  if (!existsSync(csvFilePath)) {
-    return res.status(404).json({
-      success: false,
-      error: 'No data available yet. Please submit some data first.'
-    });
-  }
-
-  // Send file for download
-  res.download(csvFilePath, 'employee_task_data.csv', (err) => {
-    if (err) {
-      console.error('Error downloading file:', err);
-      res.status(500).json({
+app.get('/api/download-csv', async (req, res) => {
+  try {
+    // Check admin token
+    const token = req.headers['x-admin-token'] || req.query.token;
+    if (token !== ADMIN_TOKEN) {
+      return res.status(403).json({
         success: false,
-        error: 'Failed to download file'
+        error: 'Unauthorized. Admin token required.'
       });
     }
-  });
+
+    console.log('📥 Download CSV requested (authenticated)');
+
+    // Try to get data from MongoDB first (persistent storage)
+    const dbAvailable = await isDatabaseAvailable();
+
+    if (dbAvailable) {
+      console.log('💾 Fetching data from MongoDB...');
+      const csvResult = await exportTasksAsCSV();
+
+      if (csvResult.success && csvResult.rowCount > 0) {
+        console.log(`✅ Exporting ${csvResult.rowCount} rows from MongoDB`);
+
+        // Send CSV content as download
+        const filename = `employee_task_data_${new Date().toISOString().split('T')[0]}.csv`;
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return res.send(csvResult.csv);
+      } else {
+        console.log('⚠️  No data in MongoDB, trying CSV backup...');
+      }
+    }
+
+    // Fallback to local CSV file
+    const csvFilePath = join(__dirname, 'employee_data.csv');
+
+    if (!existsSync(csvFilePath)) {
+      return res.status(404).json({
+        success: false,
+        error: 'No data available yet. Please submit some data first.'
+      });
+    }
+
+    console.log('📄 Sending CSV backup file');
+    res.download(csvFilePath, 'employee_task_data.csv', (err) => {
+      if (err) {
+        console.error('Error downloading file:', err);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to download file'
+        });
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error in download-csv:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 /**
- * Get CSV data as JSON (for viewing in browser) - PROTECTED
- * Access with: /api/view-data?token=YOUR_SECRET_TOKEN
+ * Get CSV data as JSON (for viewing in browser) - From MongoDB (persistent) or CSV (backup)
+ * Requires admin token authentication
  */
-app.get('/api/view-data', (req, res) => {
-  // Check for admin token
-  const token = req.query.token || req.headers['x-admin-token'];
-
-  if (token !== ADMIN_SECRET_TOKEN) {
-    return res.status(403).json({
-      success: false,
-      error: 'Unauthorized. Valid admin token required.'
-    });
-  }
-
-  const csvFilePath = join(__dirname, 'employee_data.csv');
-
-  // Check if file exists
-  if (!existsSync(csvFilePath)) {
-    return res.json({
-      success: true,
-      data: [],
-      message: 'No data available yet.'
-    });
-  }
-
+app.get('/api/view-data', async (req, res) => {
   try {
+    // Check admin token
+    const token = req.headers['x-admin-token'] || req.query.token;
+    if (token !== ADMIN_TOKEN) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized. Admin token required.'
+      });
+    }
+
+    console.log('📊 View data requested (authenticated)');
+
+    // Try to get data from MongoDB first (persistent storage)
+    const dbAvailable = await isDatabaseAvailable();
+
+    if (dbAvailable) {
+      console.log('💾 Fetching data from MongoDB...');
+      const dbResult = await getAllTasksFromDatabase();
+
+      if (dbResult.success) {
+        return res.json({
+          success: true,
+          data: dbResult.data,
+          totalRows: dbResult.count,
+          source: 'MongoDB (persistent)'
+        });
+      }
+    }
+
+    // Fallback to CSV
+    const csvFilePath = join(__dirname, 'employee_data.csv');
+
+    if (!existsSync(csvFilePath)) {
+      return res.json({
+        success: true,
+        data: [],
+        message: 'No data available yet.',
+        source: 'none'
+      });
+    }
+
     const csvContent = readFileSync(csvFilePath, 'utf-8');
     const lines = csvContent.trim().split('\n');
 
@@ -398,7 +477,8 @@ app.get('/api/view-data', (req, res) => {
       return res.json({
         success: true,
         data: [],
-        message: 'No data rows yet, only headers.'
+        message: 'No data rows yet, only headers.',
+        source: 'CSV (backup)'
       });
     }
 
@@ -416,10 +496,11 @@ app.get('/api/view-data', (req, res) => {
     res.json({
       success: true,
       data: data,
-      totalRows: data.length
+      totalRows: data.length,
+      source: 'CSV (backup - may be lost on restart)'
     });
   } catch (error) {
-    console.error('Error reading CSV:', error);
+    console.error('Error reading data:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to read data'
@@ -427,17 +508,34 @@ app.get('/api/view-data', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log('\n========================================');
   console.log('Employee Task Form - Backend Server');
   console.log('========================================');
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`API endpoint: http://localhost:${PORT}/api/saveToSharePoint`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Download CSV: http://localhost:${PORT}/api/download-csv`);
+
+  // Check MongoDB connection
+  console.log('\n📊 Storage Configuration:');
+  const dbAvailable = await isDatabaseAvailable();
+
+  if (dbAvailable) {
+    console.log('✅ MongoDB Atlas: CONNECTED (Persistent storage - no data loss!)');
+    const dbData = await getAllTasksFromDatabase();
+    if (dbData.success) {
+      console.log(`   📦 Current records in database: ${dbData.count}`);
+    }
+  } else {
+    console.log('⚠️  MongoDB Atlas: NOT CONFIGURED');
+    console.log('   ⚠️  WARNING: CSV storage is EPHEMERAL (data will be lost on restart!)');
+    console.log('   💡 To enable persistent storage, add MONGODB_URI to server/.env');
+  }
 
   if (isDemoMode) {
     console.log('\n⚠️  RUNNING IN DEMO MODE');
-    console.log('Data will be saved to local CSV file: server/employee_data.csv');
+    console.log('CSV backup: server/employee_data.csv (ephemeral - for immediate download only)');
     console.log('To enable SharePoint integration, configure Azure AD credentials in server/.env');
   } else {
     console.log('\n✓ SharePoint integration enabled');

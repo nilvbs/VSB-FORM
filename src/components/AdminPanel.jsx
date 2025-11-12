@@ -197,17 +197,45 @@ function AdminPanel() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  {Object.keys(data[0] || {}).map((key) => (
-                    <th key={key}>{key}</th>
-                  ))}
+                  <th>department</th>
+                  <th>roleTitle</th>
+                  <th>empId</th>
+                  <th>employeeName</th>
+                  <th>taskActivity</th>
+                  <th>detailedDescription</th>
+                  <th>frequency</th>
+                  <th>timeSpent</th>
+                  <th>expectedOutput</th>
+                  <th>qualityMeasurement</th>
+                  <th>toolsUsed</th>
+                  <th>technicalSkills</th>
+                  <th>softSkills</th>
+                  <th>dependencies</th>
+                  <th>challengesFaced</th>
+                  <th>trainingNeeded</th>
+                  <th>suggestedImprovements</th>
                 </tr>
               </thead>
               <tbody>
                 {data.map((row, index) => (
                   <tr key={index}>
-                    {Object.values(row).map((value, i) => (
-                      <td key={i}>{value}</td>
-                    ))}
+                    <td>{row.department || ''}</td>
+                    <td>{row.roleTitle || ''}</td>
+                    <td>{row.empId || ''}</td>
+                    <td>{row.employeeName || ''}</td>
+                    <td>{row.taskActivity || ''}</td>
+                    <td>{row.detailedDescription || ''}</td>
+                    <td>{row.frequency || ''}</td>
+                    <td>{row.timeSpent || ''}</td>
+                    <td>{row.expectedOutput || ''}</td>
+                    <td>{row.qualityMeasurement || ''}</td>
+                    <td>{row.toolsUsed || ''}</td>
+                    <td>{row.technicalSkills || ''}</td>
+                    <td>{row.softSkills || ''}</td>
+                    <td>{row.dependencies || ''}</td>
+                    <td>{row.challengesFaced || ''}</td>
+                    <td>{row.trainingNeeded || ''}</td>
+                    <td>{row.suggestedImprovements || ''}</td>
                   </tr>
                 ))}
               </tbody>
